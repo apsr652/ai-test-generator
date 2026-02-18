@@ -1,0 +1,209 @@
+<!doctype html>
+<html>
+  <head>
+    <title>🚀 AI GitHub Test Generator</title>
+    <style>
+      body {
+        font-family: Arial;
+        background: #0f172a;
+        color: white;
+        padding: 40px;
+      }
+
+      input {
+        width: 60%;
+        padding: 10px;
+        font-size: 16px;
+      }
+
+      button {
+        padding: 8px 14px;
+        margin: 6px 4px 6px 0;
+        cursor: pointer;
+        border-radius: 4px;
+        border: none;
+      }
+
+      .file-card {
+        background: #1e293b;
+        padding: 20px;
+        margin-top: 20px;
+        border-radius: 10px;
+      }
+
+      .preview-box {
+        background: #0b1220;
+        padding: 15px;
+        margin-top: 15px;
+        border-radius: 6px;
+        display: none;
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      pre {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .info-text {
+        margin-top: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🚀 AI GitHub Test Generator</h1>
+
+    <input id="repoInput" placeholder="Enter Repo URL" />
+    <button id="scanBtn" onclick="scanRepo()">Scan Repo</button>
+
+    <div id="info" class="info-text"></div>
+    <div id="fileList"></div>
+
+    <button id="generateBtn" onclick="generateTests()">
+      Generate Selected Tests
+    </button>
+
+    <div id="results"></div>
+
+    <script>
+      let selectedFiles = [];
+      let repoUrlGlobal = "";
+
+      async function scanRepo() {
+        const repoUrl = document.getElementById("repoInput").value;
+        const info = document.getElementById("info");
+        const fileListDiv = document.getElementById("fileList");
+        const scanButton = document.getElementById("scanBtn");
+
+        if (!repoUrl) {
+          alert("Enter repo URL");
+          return;
+        }
+
+        repoUrlGlobal = repoUrl;
+        selectedFiles = [];
+        fileListDiv.innerHTML = "";
+        info.innerHTML = "🔍 Scanning repository...";
+        scanButton.disabled = true;
+        scanButton.textContent = "Scanning...";
+
+        try {
+          const response = await fetch("/scan-repo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ repoUrl }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error);
+
+          info.innerHTML = `
+      <h3>Framework: ${data.framework}</h3>
+      <p>Language: ${data.language}</p>
+      <p><strong>Select up to 3 files</strong></p>
+    `;
+
+          data.files.forEach((file) => {
+            const div = document.createElement("div");
+            div.innerHTML = `
+        <input type="checkbox" value="${file}" onchange="toggleFile(this)" />
+        ${file}
+      `;
+            fileListDiv.appendChild(div);
+          });
+        } catch (err) {
+          info.innerHTML = "❌ " + err.message;
+        } finally {
+          scanButton.disabled = false;
+          scanButton.textContent = "Scan Repo";
+        }
+      }
+
+      function toggleFile(checkbox) {
+        if (checkbox.checked) {
+          if (selectedFiles.length >= 3) {
+            alert("You can select maximum 3 files only.");
+            checkbox.checked = false;
+            return;
+          }
+          selectedFiles.push(checkbox.value);
+        } else {
+          selectedFiles = selectedFiles.filter((f) => f !== checkbox.value);
+        }
+      }
+
+      async function generateTests() {
+        const results = document.getElementById("results");
+        const generateButton = document.getElementById("generateBtn");
+
+        if (selectedFiles.length === 0) {
+          alert("Select at least one file.");
+          return;
+        }
+
+        generateButton.disabled = true;
+        generateButton.textContent = "Generating...";
+        results.innerHTML = "⚙️ Generating tests...";
+
+        try {
+          const response = await fetch("/generate-tests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              repoUrl: repoUrlGlobal,
+              selectedFiles,
+            }),
+          });
+
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error);
+
+          results.innerHTML = "";
+
+          data.files.forEach((file, index) => {
+            const div = document.createElement("div");
+            div.className = "file-card";
+
+            div.innerHTML = `
+        <h3>${file.fileName}</h3>
+        <p>Test Cases: ${file.testCount}</p>
+        <button onclick="togglePreview(${index})">Preview</button>
+        <button onclick="downloadFile('${file.fileName}', ${index})">Download</button>
+        <div class="preview-box" id="preview-${index}">
+          <pre>${file.content.replace(/</g, "&lt;")}</pre>
+        </div>
+      `;
+
+            results.appendChild(div);
+          });
+
+          window.generatedFiles = data.files;
+        } catch (err) {
+          results.innerHTML = "❌ " + err.message;
+        } finally {
+          generateButton.disabled = false;
+          generateButton.textContent = "Generate Selected Tests";
+        }
+      }
+
+      function togglePreview(index) {
+        const box = document.getElementById(`preview-${index}`);
+        box.style.display = box.style.display === "none" ? "block" : "none";
+      }
+
+      function downloadFile(fileName, index) {
+        const content = window.generatedFiles[index].content;
+
+        const blob = new Blob([content], { type: "text/plain" });
+        const link = document.createElement("a");
+
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        link.click();
+
+        URL.revokeObjectURL(link.href);
+      }
+    </script>
+  </body>
+</html>
